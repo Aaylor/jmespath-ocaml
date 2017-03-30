@@ -1,5 +1,4 @@
 
-exception TypeError
 exception IncorrectParameters of int * int
 
 type jmespath_parameter =

@@ -12,61 +12,6 @@ let map_filter ~map ~filter list =
     list
     []
 
-let not_null json =
-  match json with
-  | `Null -> false
-  | _ -> true
-
-let truth_value json =
-  match json with
-  | `List [] | `Assoc [] | `String "" | `Bool false | `Null -> false
-  | _ -> true
-
-type 'a polymorphic_operator = { op: 'a. 'a -> 'a -> bool }
-
-let compare_number { op } left right =
-  match left, right with
-  | `Float f, `Int i -> `Bool (op f (float_of_int i))
-  | `Int i, `Float f -> `Bool (op (float_of_int i) f)
-  | `Float f1, `Float f2 -> `Bool (op f1 f2)
-  | `Int i1, `Int i2 -> `Bool(op i1 i2)
-  | _ -> `Null
-
-let rec json_equal (left : Yojson.Basic.json) (right: Yojson.Basic.json) =
-  match left, right with
-  | `String s1, `String s2 ->
-    String.equal s1 s2
-  | `Int i1, `Int i2 ->
-    i1 = i2
-  | `Float f1, `Float f2 ->
-    f1 = f2
-  | `Int i, `Float f
-  | `Float f, `Int i ->
-    (float_of_int i) = f
-  | `Bool b1, `Bool b2 ->
-    b1 = b2
-  | `Null, `Null ->
-    true
-  | `List l1, `List l2 ->
-    begin
-      try List.for_all2 json_equal l1 l2
-      with Invalid_argument _ -> false
-    end
-  | `Assoc a1, `Assoc a2 ->
-    let a1_sorted = List.sort (fun (s, _) (s', _) -> String.compare s s') a1 in
-    let a2_sorted = List.sort (fun (s, _) (s', _) -> String.compare s s') a2 in
-    begin
-      try
-        List.for_all2
-          (fun (key1, value1) (key2, value2) ->
-             String.equal key1 key2 && json_equal value1 value2)
-          a1_sorted
-          a2_sorted
-      with Invalid_argument _ -> false
-    end
-  | _ ->
-    false
-
 let slice ~start ~stop ~step json_list =
   if step = 0 then failwith "slice: step is 0";
   let array_length = List.length json_list in
@@ -127,7 +72,7 @@ let rec eval_query query state =
     eval_multi_select_hash selection state
   | Not expr ->
     let { json } = eval_query expr state in
-    let b = truth_value json in
+    let b = Util.truth_value json in
     unprojectify_state (`Bool (not b))
   | SubExpression (expr, sub_expr) ->
     let state' = eval_query expr state in
@@ -158,7 +103,7 @@ and eval_any state =
   let result =
     match state.json with
     | `Assoc elements ->
-      let result = map_filter ~map:snd ~filter:not_null elements in
+      let result = map_filter ~map:snd ~filter:Util.not_null elements in
       `List result
     | _ ->
       `Null
@@ -175,7 +120,7 @@ and eval_identifier id state =
         | `Assoc _ -> Yojson.Basic.Util.member id elt
         | _ -> `Null
       in
-      let result = map_filter ~map ~filter:not_null l in
+      let result = map_filter ~map ~filter:Util.not_null l in
       `List result
     | `Assoc _ ->
       Yojson.Basic.Util.member id state.json
@@ -208,16 +153,16 @@ and eval_binary_expression binop left right state =
   match binop with
   | Or ->
     let result_left = eval_query left state in
-    if truth_value result_left.json
+    if Util.truth_value result_left.json
     then result_left
     else
       let result_right = eval_query right state in
-      if truth_value result_right.json
+      if Util.truth_value result_right.json
       then result_right
       else unprojectify_state `Null
   | And ->
     let result_left = eval_query left state in
-    if truth_value result_left.json
+    if Util.truth_value result_left.json
     then eval_query right state
     else result_left
 
@@ -227,15 +172,15 @@ and eval_comparator_expression comparator left right state =
   let result =
     match comparator with
     | LessThan ->
-      compare_number { op = ( < ) } json_left json_right
+      Util.compare_number Util.{ op = ( < ) } json_left json_right
     | LessOrEqual ->
-      compare_number { op = ( <= ) } json_left json_right
+      Util.compare_number Util.{ op = ( <= ) } json_left json_right
     | GreaterThan ->
-      compare_number { op = ( > ) } json_left json_right
+      Util.compare_number Util.{ op = ( > ) } json_left json_right
     | GreaterOrEqual ->
-      compare_number { op = ( >= ) } json_left json_right
-    | Equal -> `Bool (json_equal json_left json_right)
-    | NotEqual -> `Bool (not (json_equal json_left json_right))
+      Util.compare_number Util.{ op = ( >= ) } json_left json_right
+    | Equal -> `Bool (Util.json_equal json_left json_right)
+    | NotEqual -> `Bool (not (Util.json_equal json_left json_right))
   in
   unprojectify_state result
 
@@ -280,7 +225,7 @@ and eval_index_expression index state =
           (fun acc json_elt ->
              let state = unprojectify_state json_elt in
              let { json = conditional_json } = eval_query condition state in
-             if truth_value conditional_json
+             if Util.truth_value conditional_json
              then json_elt :: acc
              else acc)
           []

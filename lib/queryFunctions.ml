@@ -18,6 +18,15 @@ let coerce_to_json (p: jmespath_parameter): Yojson.Basic.json =
   | `Int i -> `Int i
   | _ -> assert false
 
+let pp_jmespath_parameter fmt param =
+  match param with
+  | `JMESPathExpr _ ->
+    Format.fprintf fmt "JMESPathExpr"
+  | _ ->
+    Format.fprintf fmt
+      "JSON(%s)"
+      (Yojson.Basic.to_string (coerce_to_json param))
+
 
 (* Types System *)
 
@@ -33,20 +42,49 @@ type jmespath_type =
   | Any
   | Variadic of jmespath_type
 
+let rec pp_jmespath_type fmt typ =
+  match typ with
+  | Number -> Format.fprintf fmt "Number"
+  | String -> Format.fprintf fmt "String"
+  | Boolean -> Format.fprintf fmt "Boolean"
+  | Array t -> Format.fprintf fmt "Array(%a)" pp_jmespath_type t
+  | Object -> Format.fprintf fmt "Object"
+  | Null -> Format.fprintf fmt "Null"
+  | Expression -> Format.fprintf fmt "Expression"
+  | Or (t1, t2) -> Format.fprintf fmt "Or(%a, %a)" pp_jmespath_type t1 pp_jmespath_type t2
+  | Any -> Format.fprintf fmt "Any"
+  | Variadic t -> Format.fprintf fmt "Variadic(%a)" pp_jmespath_type t
+
 type number = [ `Int of int | `Float of float ]
 
 
 (* Typechecking *)
 
-exception TypeError
+exception TypeError of jmespath_type * jmespath_parameter
 exception IncorrectParameters of int * int
+
+let () =
+  Printexc.register_printer
+    (fun exn ->
+       match exn with
+       | TypeError (typ, json) ->
+         let message =
+           Format.asprintf
+             "Type Error. Expected: %a. Got following json: %a@."
+             pp_jmespath_type typ
+             pp_jmespath_parameter json
+         in
+         Some message
+       | _ ->
+         None)
 
 let rec compatible_type typ (json: jmespath_parameter) =
   match typ, json with
   | Number, (`Int _ | `Float _)
   | String, `String _
   | Boolean, `Bool _
-  | Object, `Assoc _
+  | Object, `Assoc _ ->
+    true
   | Any, `JMESPathExpr _ ->
     false
   | Any, _ ->
@@ -69,10 +107,11 @@ let typecheck types params =
       (* Special case for variadic functions *)
       List.iter
         (fun param ->
-           if not (compatible_type typ param) then raise TypeError)
+           if not (compatible_type typ param)
+           then raise (TypeError (typ, param)))
         ys
     | x :: xs, y :: ys ->
-      if not (compatible_type x y) then raise TypeError;
+      if not (compatible_type x y) then raise (TypeError (x, y));
       typecheck_aux (succ index) xs ys
     | [], ys ->
       raise (IncorrectParameters (index, List.length ys + index))
@@ -154,6 +193,8 @@ let abs =
 
 let avg =
   let run = function
+    | [ `List [] ] ->
+      `Null
     | [ `List json ] ->
       let sum, nb =
         List.fold_left
@@ -180,22 +221,16 @@ let contains =
         with Not_found -> false
       in
       `Bool result
-    | [ `List subject; `String search ] ->
-      let result =
-        List.exists
-          (fun str ->
-             match str with
-             | `String s -> s = search
-             | _ -> assert false)
-          subject
-      in
+    | [ `List subject; json ] ->
+      let json = coerce_to_json json in
+      let result = List.exists (Util.json_equal json) subject in
       `Bool result
-    | [ (`String _ | `List _); _ ] ->
+    | [ (`String _); _ ] ->
       `Bool false
     | _ ->
-      assert false (* by typing *)
+      assert false
   in
-  make_function ~name:"contains" ~types:[ Or (String, Array String); Any ] ~run
+  make_function ~name:"contains" ~types:[ Or (String, Array Any); Any ] ~run
 
 let ceil =
   let run = function
