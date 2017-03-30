@@ -19,7 +19,7 @@ let compare_number { op } left right =
   | `Int i1, `Int i2 -> `Bool(op i1 i2)
   | _ -> `Null
 
-let rec json_equal (left : Yojson.Basic.json) (right: Yojson.Basic.json) =
+let rec json_equal left right =
   match left, right with
   | `String s1, `String s2 ->
     String.equal s1 s2

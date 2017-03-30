@@ -134,6 +134,9 @@ let coerce_number (json: Yojson.Basic.json) : number =
 
 let max_int_string left right =
   match left, right with
+  | `Int i, `Float f
+  | `Float f, `Int i -> `Float (max (float_of_int i) f)
+  | `Float f1, `Float f2 -> `Float (max f1 f2)
   | `Int i, `Int j -> `Int (max i j)
   | `String i, `String j -> `String (max i j)
   | _ ->
@@ -143,6 +146,9 @@ let max_int_string left right =
 
 let min_int_string left right =
   match left, right with
+  | `Int i, `Float f
+  | `Float f, `Int i -> `Float (min (float_of_int i) f)
+  | `Float f1, `Float f2 -> `Float (min f1 f2)
   | `Int i, `Int j -> `Int (min i j)
   | `String i, `String j -> `String (min i j)
   | _ ->
