@@ -20,7 +20,7 @@ let make_index_slice start stop step =
 %token<int> NUMBER
 %token<Yojson.Basic.json> LITERAL
 
-%nonassoc PIPE
+%left PIPE
 %left DOT
 %right BANG
 %left EQ NOTEQ
