@@ -91,6 +91,26 @@ let coerce_number (json: Yojson.Basic.json) : number =
   | _ -> assert false
 
 
+(* Helpers *)
+
+let max_int_string left right =
+  match left, right with
+  | `Int i, `Int j -> `Int (max i j)
+  | `String i, `String j -> `String (max i j)
+  | _ ->
+    Format.eprintf "max_int_string (%s) (%s): failure@."
+      (Yojson.Basic.to_string left) (Yojson.Basic.to_string right);
+    assert false
+
+let min_int_string left right =
+  match left, right with
+  | `Int i, `Int j -> `Int (min i j)
+  | `String i, `String j -> `String (min i j)
+  | _ ->
+    Format.eprintf "max_int_string (%s) (%s): failure@."
+      (Yojson.Basic.to_string left) (Yojson.Basic.to_string right);
+    assert false
+
 (* Function register *)
 
 exception UnknownFunction of string
@@ -263,10 +283,8 @@ let max =
     | [ `List elts ] ->
       List.fold_left
         (fun acc elt ->
-           match acc, elt with
-           | `Int iacc, `Int ielt -> `Int (max iacc ielt)
-           | `String sacc, `String selt -> `String (max sacc selt)
-           | _ -> assert false)
+           if acc = `Null then elt
+           else max_int_string acc elt)
         `Null
         elts
     | _ ->
@@ -280,10 +298,8 @@ let max_by =
       let result =
         List.fold_left
           (fun acc elt ->
-             if acc = `Null then elt
-             else
-               let evaluated = eval elt in
-               Pervasives.max acc evaluated)
+             if acc = `Null then eval elt
+             else max_int_string acc (eval elt))
           `Null
           elts
       in
@@ -324,10 +340,8 @@ let min =
       let result =
         List.fold_left
           (fun acc elt ->
-             match acc, elt with
-             | `Int iacc, `Int ielt -> `Int (min iacc ielt)
-             | `String sacc, `String selt -> `String (min sacc selt)
-             | _ -> assert false)
+             if acc = `Null then elt
+             else min_int_string acc elt)
           `Null
           elts
       in
@@ -335,13 +349,24 @@ let min =
     | _ ->
       assert false
   in
-  make_function ~name:"min" ~types:[] ~run
+  make_function ~name:"min" ~types:[ Or(Array Number, Array String) ] ~run
 
 let min_by =
   let run = function
-    | _ -> assert false
+    | [ `List elts; `JMESPathExpr eval ] ->
+      let result =
+        List.fold_left
+          (fun acc elt ->
+             if acc = `Null then eval elt
+             else min_int_string acc (eval elt))
+          `Null
+          elts
+      in
+      result
+    | _ ->
+      assert false
   in
-  make_function ~name:"min_by" ~types:[] ~run
+  make_function ~name:"min_by" ~types:[ Array Any; Expression; ] ~run
 
 let not_null =
   let run parameters =
@@ -369,16 +394,27 @@ let reverse =
 
 let sort =
   let run = function
+    | [ `List l ] ->
+      let result = List.sort compare l in
+      `List result
     | _ ->
       assert false
   in
-  make_function ~name:"sort" ~types:[] ~run
+  make_function ~name:"sort" ~types:[ Or (Array Number, Array String) ] ~run
 
 let sort_by =
   let run = function
-    | _ -> assert false
+    | [ `List l; `JMESPathExpr eval ] ->
+      let result =
+        List.sort
+          (fun left right -> compare (eval left) (eval right))
+          l
+      in
+      `List result
+    | _ ->
+      assert false
   in
-  make_function ~name:"sort_by" ~types:[] ~run
+  make_function ~name:"sort_by" ~types:[ Array Any; Expression ] ~run
 
 let starts_with =
   let run = function
