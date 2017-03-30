@@ -1,2 +1,2 @@
 true: use_menhir
-true: package(yojson)
+true: package(str), package(yojson)
