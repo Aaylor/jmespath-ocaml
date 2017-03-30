@@ -5,7 +5,7 @@ open QueryAST
 let make_index_slice start stop step =
   let step =
     match step with
-    | None -> 0
+    | None -> 1
     | Some step -> step
   in
   IndexSlice { start; stop; step }

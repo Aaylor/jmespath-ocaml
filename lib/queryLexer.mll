@@ -4,7 +4,7 @@
 
   let eval_literal l =
     try LITERAL (Yojson.Basic.from_string l)
-    with _ -> failwith "invalid json"
+    with _ -> failwith ("invalid json: " ^ l)
 
 }
 
@@ -41,7 +41,7 @@ let raw_string_char =
 
 let raw_string = '\'' (raw_string_char* as str) '\''
 
-let literal = '`' (_* as l) '`'
+let literal = '`' ([^'`']* as l) '`'
 
 
 rule query_lexing = parse
